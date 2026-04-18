@@ -12,7 +12,10 @@ The Quant-Alpha Risk Engine transitions beyond simple price forecasting into **R
 ### Key Professional Features
 - **Recursive Macro-Conditioning**: Forecasts the future path of macro signals (VIX, 10Y Yield) before using them to condition the primary asset's risk profile.
 - **Adaptive Regime Scoring**: Uses a rolling 90-day Z-score to determine if risk is "abnormal" for the current market cycle.
-- **Tail Risk Synthesis (VaR & CVaR)**: Calculates both Value-at-Risk and Expected Shortfall (Conditional VaR) to capture extreme "black swan" tail risks.
+- **Institutional Performance**: Computes Forward-Looking Sharpe and Sortino ratios based on TimesFM expected returns and volatility.
+- **Monte Carlo Probabilities**: Simulates 1,000 future paths using Geometric Brownian Motion to estimate the **Probability of Ruin** (e.g., 5% drawdown).
+- **Macro Signal Strength**: Calculates real-time Pearson correlations to identify which macro drivers are currently coupled with the asset.
+- **Tail Risk Synthesis (VaR & CVaR)**: Calculates both Value-at-Risk and Expected Shortfall (Conditional VaR).
 - **Actionable Alpha (Kelly Sizing)**: Automatically computes the optimal fractional position size using the Continuous Kelly Criterion.
 - **Empirical Backtesting**: Validates model reliability on every run by testing against the most recent 10 days of "hidden" data.
 
@@ -32,11 +35,11 @@ While traditional risk engines rely on "shallow" statistical models (ARIMA, GARC
 
 The suite operates on a multi-stage execution pipeline:
 
-1.  **Ingestion Layer**: Real-time retrieval of OHLCV data via `yfinance` for both primary assets and macro-covariates.
-2.  **Quant Signal Processing**: Calculation of log-returns followed by a 20-day Exponentially Weighted Moving Average (EWMA) for "ghost-free" volatility.
-3.  **Recursive Forecast Stage (A)**: All macro signals are fed into TimesFM to project their most likely paths over the requested horizon.
-4.  **Conditioned Forecast Stage (B)**: The primary asset's volatility and expected returns are forecasted using the *projected paths* from Stage A as dynamic external covariates (XReg).
-5.  **Risk & Alpha Synthesis**: Data is processed through the VaR, CVaR, and Kelly engines to generate actionable allocation advice.
+1.  **Ingestion Layer**: Real-time retrieval of OHLCV data via `yfinance`.
+2.  **Quant Signal Processing**: Calculation of log-returns, 20-day EWMA volatility, and 60-day macro correlation matrices.
+3.  **Recursive Forecast Stage (A)**: All macro signals are projected via TimesFM.
+4.  **Dual-Stream Forecast Stage (B)**: Parallel forecasting of returns ($\mu$) and volatility ($\sigma$) using projected macro paths as covariates.
+5.  **Risk & Performance Synthesis**: Data is processed through VaR, CVaR, Monte Carlo, and Kelly engines to generate actionable allocation advice.
 
 ---
 
@@ -89,28 +92,20 @@ python main.py --preset tech --portfolio 1000000
 ## 📊 Results Analysis & Mathematics
 
 ### The Volatility Model (EWMA)
-We use an **Exponentially Weighted Moving Average** (Span=20) for volatility calculation:
 $$\sigma_t^2 = (1-\alpha)\sigma_{t-1}^2 + \alpha r_t^2$$
-*Why?* Standard rolling averages cause "ghosting" where old spikes stay in the data for 20 days. EWMA decays old data exponentially, allowing the engine to react instantly to regime shifts.
 
-### Value-at-Risk (VaR)
-The suite translates the 90th percentile forecast into a dollar-value exposure:
-$$\text{VaR} = \text{Portfolio Value} \times \text{Projected Volatility} \times Z_{\text{confidence}}$$
-For a 95% confidence level, the engine uses a Z-multiplier of **1.645**.
+### Value-at-Risk (VaR) & Expected Shortfall (CVaR)
+$$\text{VaR} = \text{Portfolio} \times \sigma \times Z_{\alpha}$$
+$$\text{CVaR}_{\alpha} = \text{Portfolio} \times \sigma \times \frac{\phi(\Phi^{-1}(1-\alpha))}{1-\alpha}$$
 
-### Expected Shortfall (CVaR)
-CVaR measures the average loss in the worst $(1-\alpha)$ cases. We use a Gaussian approximation for the tail:
-$$\text{CVaR}_{\alpha} = \text{Portfolio Value} \times \text{Volatility} \times \frac{\phi(\Phi^{-1}(1-\alpha))}{1-\alpha}$$
-This provides a more conservative estimate than VaR by accounting for the magnitude of losses beyond the threshold.
+### Probability of Ruin (Monte Carlo)
+We simulate $N=1000$ paths using Geometric Brownian Motion:
+$$dS_t = \mu S_t dt + \sigma S_t dW_t$$
+The **Probability of Ruin** is defined as the percentage of paths that hit a -5% drawdown at any point during the forecast horizon.
 
 ### Continuous Kelly Criterion
-To calculate optimal position sizing ($f^*$), we use the continuous-time Kelly formula:
 $$f^* = \frac{\mu - r}{\sigma^2}$$
-Where:
-- $\mu$: Annualized expected return (from model point forecast).
-- $r$: Risk-free rate (default 4%).
-- $\sigma$: Annualized expected volatility.
-The suite clips this to $[0, 1]$ to prevent shorting or excessive leverage recommendations.
+Where $\mu$ and $\sigma$ are annualized projections from the TimesFM dual-stream forecast.
 
 ---
 

@@ -22,7 +22,7 @@ PRESETS = {
     "safe-haven": {"primary": "GLD", "macros": "DX-Y.NYB,^VIX"}
 }
 
-def print_dashboard(args, latest_vol, risk_result, reliability=None):
+def print_dashboard(args, latest_vol, risk_result, correlation_dict, reliability=None):
     if args.output_json:
         payload = {
             "parameters": vars(args),
@@ -34,8 +34,12 @@ def print_dashboard(args, latest_vol, risk_result, reliability=None):
                 "var_exposure": float(risk_result["var_exposure"]),
                 "cvar_exposure": float(risk_result["cvar_exposure"]),
                 "kelly_fraction": float(risk_result["kelly_fraction"]),
+                "sharpe_ratio": float(risk_result["sharpe_ratio"]),
+                "sortino_ratio": float(risk_result["sortino_ratio"]),
+                "prob_ruin_5pct": float(risk_result["prob_ruin_5pct"]),
                 "model_reliability_pct": float(reliability) if reliability is not None else None
             },
+            "correlations": correlation_dict,
             "status": risk_result["status"],
             "explanation": risk_result["explanation"]
         }
@@ -49,36 +53,41 @@ def print_dashboard(args, latest_vol, risk_result, reliability=None):
     var_exp = risk_result["var_exposure"]
     cvar_exp = risk_result["cvar_exposure"]
     kelly_f = risk_result["kelly_fraction"]
+    sharpe = risk_result["sharpe_ratio"]
+    sortino = risk_result["sortino_ratio"]
+    prob_ruin = risk_result["prob_ruin_5pct"]
     explanation = risk_result["explanation"]
     
-    table = Table(title="QUANT-ALPHA PRO: RISK & ALLOCATION SUITE", title_style="bold cyan", show_header=False, expand=True)
+    table = Table(title="QUANT-ALPHA PRO: INSTITUTIONAL RISK SUITE", title_style="bold cyan", show_header=False, expand=True)
     table.add_column("Key", style="bold white", justify="right")
     table.add_column("Value", style="bold magenta")
     
     table.add_section()
-    table.add_row("[yellow]CONTEXT", "")
+    table.add_row("[yellow]CONTEXT & RELIABILITY", "")
     table.add_row("Active Preset", args.preset.upper())
     table.add_row("Primary Asset", args.primary)
-    table.add_row("Macro Covariates", args.macros)
     table.add_row("Portfolio Size", f"${args.portfolio:,.2f}")
-    
-    table.add_section()
-    table.add_row("[yellow]ML RELIABILITY (BACKTEST)", "")
     if reliability is not None:
         rel_color = "green" if reliability > 80 else "yellow" if reliability > 60 else "red"
-        table.add_row("Coverage Probability (90% CI)", f"[{rel_color}]{reliability:.1f}%[/{rel_color}]")
-    else:
-        table.add_row("Coverage Probability", "N/A (Backtest Skipped)")
+        table.add_row("Model Reliability (Backtest)", f"[{rel_color}]{reliability:.1f}%[/{rel_color}]")
         
     table.add_section()
-    table.add_row("[yellow]QUANTITATIVE PROJECTIONS", "")
+    table.add_row("[yellow]MACRO SIGNAL STRENGTH (60D CORR)", "")
+    for ticker, corr in correlation_dict.items():
+        strength = "Strong" if abs(corr) > 0.7 else "Moderate" if abs(corr) > 0.4 else "Weak"
+        direction = "Positive" if corr > 0 else "Inverse"
+        table.add_row(f"{ticker}", f"{corr:+.2f} ({strength} {direction})")
+
+    table.add_section()
+    table.add_row("[yellow]INSTITUTIONAL PERFORMANCE", "")
     table.add_row("Exp. Daily Return (Avg)", f"{expected_ret*100:+.4f}%")
-    table.add_row("Latest Realized Vol (EWMA)", f"{float(latest_vol):.6f}")
-    table.add_row("Projected Max Vol (90th Pct)", f"{float(projected_vol):.6f}")
-    table.add_row("Adaptive Regime Z-Score", f"{float(z_score):.4f}")
+    table.add_row("Forward Sharpe Ratio", f"{sharpe:.2f}")
+    table.add_row("Forward Sortino Ratio", f"{sortino:.2f}")
+    table.add_row("Prob. of 5% Drawdown", f"{prob_ruin*100:.1f}%")
     
     table.add_section()
     table.add_row("[yellow]TAIL RISK SYNTHESIS", "")
+    table.add_row("Adaptive Regime Z-Score", f"{float(z_score):.4f}")
     table.add_row(f"Value-at-Risk ({int(args.confidence)}% VaR)", f"[bold red]${var_exp:,.2f}[/bold red]")
     table.add_row(f"Expected Shortfall ({int(args.confidence)}% CVaR)", f"[bold red]${cvar_exp:,.2f}[/bold red]")
     
@@ -127,7 +136,7 @@ def main():
     
     with console.status(f"[bold green]Fetching multi-signal data for {args.primary}...", spinner="dots"):
         data_fetcher = MarketDataFetcher()
-        primary_vol, primary_returns, macro_cov_dict = data_fetcher.fetch_multivariate_data(
+        primary_vol, primary_returns, macro_cov_dict, correlation_dict = data_fetcher.fetch_multivariate_data(
             primary_ticker=args.primary, macro_tickers=macro_list, days=args.days + args.horizon, interval=args.interval
         )
         latest_realized_vol = primary_vol[-1]
@@ -165,10 +174,11 @@ def main():
         z_threshold=args.z_threshold,
         portfolio_value=args.portfolio,
         confidence_level=conf_decimal,
-        expected_return_daily=avg_expected_return
+        expected_return_daily=avg_expected_return,
+        horizon=args.horizon
     )
     
-    print_dashboard(args, latest_realized_vol, risk_result, reliability)
+    print_dashboard(args, latest_realized_vol, risk_result, correlation_dict, reliability)
 
     if args.export:
         output = {"risk_analysis": risk_result, "reliability": reliability, "metadata": vars(args)}

@@ -4,10 +4,10 @@ import pandas as pd
 import yfinance as yf
 
 class MarketDataFetcher:
-    def fetch_multivariate_data(self, primary_ticker: str, macro_tickers: list[str], days: int, interval: str = "1d", clip_limit: float = None) -> tuple[np.ndarray, np.ndarray, dict]:
+    def fetch_multivariate_data(self, primary_ticker: str, macro_tickers: list[str], days: int, interval: str = "1d", clip_limit: float = None) -> tuple[np.ndarray, np.ndarray, dict, dict]:
         # Calculate date range for the last 'days' days
         end_date = datetime.datetime.now()
-        start_date = end_date - datetime.timedelta(days=days)
+        start_date = end_date - datetime.timedelta(days=days + 90) # Extra for correlation lookback
         
         # Download historical data simultaneously
         all_tickers = [primary_ticker] + macro_tickers
@@ -37,8 +37,20 @@ class MarketDataFetcher:
         df_consolidated['primary_volatility'] = primary_vol
         df_consolidated['primary_returns'] = log_returns
         
+        # Signal Strength: Calculate 60-day Pearson correlations
+        # We use log-returns of both for standard correlation analysis
+        correlation_dict = {}
+        for ticker in macro_tickers:
+            m_returns = np.log(clean_df[ticker] / clean_df[ticker].shift(1))
+            # Calculate correlation over the last 60 available periods
+            corr = log_returns.tail(60).corr(m_returns.tail(60))
+            correlation_dict[ticker] = float(corr) if not np.isnan(corr) else 0.0
+        
         # Drop the new leading NaNs created by the 20-period rolling window and log returns shift
         df_consolidated = df_consolidated.dropna()
+        
+        # Enforce lookback window 'days' from end
+        df_consolidated = df_consolidated.tail(days)
         
         if clip_limit is not None:
             df_consolidated['primary_volatility'] = df_consolidated['primary_volatility'].clip(upper=clip_limit)
@@ -54,4 +66,4 @@ class MarketDataFetcher:
         primary_vol_array = df_consolidated['primary_volatility'].to_numpy()
         primary_returns_array = df_consolidated['primary_returns'].to_numpy()
         
-        return primary_vol_array, primary_returns_array, macro_dict_out
+        return primary_vol_array, primary_returns_array, macro_dict_out, correlation_dict

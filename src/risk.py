@@ -1,4 +1,34 @@
 import numpy as np
+import pandas as pd
+
+def calculate_historical_performance(price_series: pd.Series) -> dict:
+    """
+    Computes trailing returns and maximum drawdown.
+    Assumes approx 252 trading days per year and 21 per month.
+    """
+    if len(price_series) < 2:
+        return {}
+        
+    latest = price_series.iloc[-1]
+    
+    # Trailing Returns
+    ret_1d = (latest / price_series.iloc[-2]) - 1 if len(price_series) >= 2 else 0.0
+    ret_1m = (latest / price_series.iloc[-21]) - 1 if len(price_series) >= 21 else None
+    ret_1y = (latest / price_series.iloc[-252]) - 1 if len(price_series) >= 252 else None
+    ret_2y = (latest / price_series.iloc[-504]) - 1 if len(price_series) >= 504 else None
+    
+    # Max Drawdown
+    roll_max = price_series.cummax()
+    drawdown = (price_series / roll_max) - 1.0
+    max_dd = float(drawdown.min())
+    
+    return {
+        "ret_1d": float(ret_1d),
+        "ret_1m": float(ret_1m) if ret_1m is not None else "N/A",
+        "ret_1y": float(ret_1y) if ret_1y is not None else "N/A",
+        "ret_2y": float(ret_2y) if ret_2y is not None else "N/A",
+        "max_drawdown": max_dd
+    }
 
 def calculate_portfolio_var(projected_volatility: float, portfolio_value: float, confidence_level: float = 0.95) -> float:
     """

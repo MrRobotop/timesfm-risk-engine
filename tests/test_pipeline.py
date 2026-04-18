@@ -18,10 +18,11 @@ def test_fetch_multivariate_data(mock_download):
     mock_download.return_value = dummy_df
     
     fetcher = MarketDataFetcher()
-    primary_vol, primary_returns, macro_cov_dict, correlation_dict = fetcher.fetch_multivariate_data("SPY", ["^VIX"], 50)
+    primary_vol, primary_returns, macro_cov_dict, correlation_dict, primary_price = fetcher.fetch_multivariate_data("SPY", ["^VIX"], 50)
     
     assert isinstance(primary_vol, np.ndarray)
     assert isinstance(primary_returns, np.ndarray)
+    assert isinstance(primary_price, pd.Series)
     assert isinstance(correlation_dict, dict)
     assert "^VIX" in correlation_dict
     assert isinstance(correlation_dict["^VIX"], float)

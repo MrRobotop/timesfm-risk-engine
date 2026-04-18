@@ -2,6 +2,7 @@ import argparse
 import sys
 import json
 import numpy as np
+import pandas as pd
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
@@ -9,7 +10,7 @@ from rich.text import Text
 
 from src.data import MarketDataFetcher
 from src.forecaster import RiskForecaster
-from src.risk import assess_multivariate_risk
+from src.risk import assess_multivariate_risk, calculate_historical_performance
 
 console = Console()
 
@@ -22,7 +23,7 @@ PRESETS = {
     "safe-haven": {"primary": "GLD", "macros": "DX-Y.NYB,^VIX"}
 }
 
-def print_dashboard(args, latest_vol, risk_result, correlation_dict, reliability=None):
+def print_dashboard(args, latest_vol, risk_result, correlation_dict, performance_dict, reliability=None):
     if args.output_json:
         payload = {
             "parameters": vars(args),
@@ -39,6 +40,7 @@ def print_dashboard(args, latest_vol, risk_result, correlation_dict, reliability
                 "prob_ruin_5pct": float(risk_result["prob_ruin_5pct"]),
                 "model_reliability_pct": float(reliability) if reliability is not None else None
             },
+            "performance": performance_dict,
             "correlations": correlation_dict,
             "status": risk_result["status"],
             "explanation": risk_result["explanation"]
@@ -71,6 +73,18 @@ def print_dashboard(args, latest_vol, risk_result, correlation_dict, reliability
         rel_color = "green" if reliability > 80 else "yellow" if reliability > 60 else "red"
         table.add_row("Model Reliability (Backtest)", f"[{rel_color}]{reliability:.1f}%[/{rel_color}]")
         
+    table.add_section()
+    table.add_row("[yellow]HISTORICAL PERFORMANCE (REAL RESULTS)", "")
+    for key in ["ret_1d", "ret_1m", "ret_1y", "ret_2y"]:
+        label = {"ret_1d": "1-Day Return", "ret_1m": "1-Month Return", "ret_1y": "1-Year Return", "ret_2y": "2-Year Return"}[key]
+        val = performance_dict.get(key, "N/A")
+        if isinstance(val, float):
+            color = "green" if val > 0 else "red"
+            table.add_row(label, f"[{color}]{val*100:+.2f}%[/{color}]")
+        else:
+            table.add_row(label, "N/A")
+    table.add_row("Max Historical Drawdown", f"[bold red]{performance_dict.get('max_drawdown', 0)*100:.2f}%[/bold red]")
+
     table.add_section()
     table.add_row("[yellow]MACRO SIGNAL STRENGTH (60D CORR)", "")
     for ticker, corr in correlation_dict.items():
@@ -136,7 +150,7 @@ def main():
     
     with console.status(f"[bold green]Fetching multi-signal data for {args.primary}...", spinner="dots"):
         data_fetcher = MarketDataFetcher()
-        primary_vol, primary_returns, macro_cov_dict, correlation_dict = data_fetcher.fetch_multivariate_data(
+        primary_vol, primary_returns, macro_cov_dict, correlation_dict, full_price_series = data_fetcher.fetch_multivariate_data(
             primary_ticker=args.primary, macro_tickers=macro_list, days=args.days + args.horizon, interval=args.interval
         )
         latest_realized_vol = primary_vol[-1]
@@ -178,10 +192,12 @@ def main():
         horizon=args.horizon
     )
     
-    print_dashboard(args, latest_realized_vol, risk_result, correlation_dict, reliability)
+    performance_dict = calculate_historical_performance(full_price_series)
+    
+    print_dashboard(args, latest_realized_vol, risk_result, correlation_dict, performance_dict, reliability)
 
     if args.export:
-        output = {"risk_analysis": risk_result, "reliability": reliability, "metadata": vars(args)}
+        output = {"risk_analysis": risk_result, "reliability": reliability, "performance": performance_dict, "metadata": vars(args)}
         with open(args.export, 'w') as f: json.dump(output, f, indent=2)
         console.print(f"[bold green]Report exported to {args.export}[/bold green]")
 

@@ -18,6 +18,16 @@ The Quant-Alpha Risk Engine transitions beyond simple price forecasting into **R
 
 ---
 
+## 💎 The TimesFM Advantage: Why a Foundation Model?
+
+While traditional risk engines rely on "shallow" statistical models (ARIMA, GARCH), the Quant-Alpha Suite is built on **Google's TimesFM 2.5**, a 200M parameter Transformer. This provides several cutting-edge advantages:
+
+1.  **Zero-Shot Versatility**: Unlike models that need re-training for every asset, TimesFM has "pre-learned" the patterns of financial markets from billions of data points. It understands the "signature" of a market crash in NVDA just as well as it does in BTC, providing institutional-grade forecasts instantly.
+2.  **Continuous Quantile Distributions**: Most models only predict the "median" path. TimesFM uses a continuous quantile head, allowing our engine to extract high-fidelity tail-risk data. This is the foundation for our precision VaR (Value-at-Risk) and CVaR calculations.
+3.  **Non-Linear Macro Feedback**: By using TimesFM recursively, we capture the "feedback loop" between macro signals (like the VIX) and asset volatility. The model doesn't just look at where the macro signal is *now*—it anticipates its trajectory to condition the final risk score.
+
+---
+
 ## 🏗️ Architecture & Pipeline Logic
 
 The suite operates on a multi-stage execution pipeline:

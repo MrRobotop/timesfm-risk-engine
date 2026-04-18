@@ -12,7 +12,8 @@ The Quant-Alpha Risk Engine transitions beyond simple price forecasting into **R
 ### Key Professional Features
 - **Recursive Macro-Conditioning**: Forecasts the future path of macro signals (VIX, 10Y Yield) before using them to condition the primary asset's risk profile.
 - **Adaptive Regime Scoring**: Uses a rolling 90-day Z-score to determine if risk is "abnormal" for the current market cycle.
-- **Value-at-Risk (VaR) Synthesis**: Translates abstract volatility into a 1-day maximum expected loss in USD.
+- **Tail Risk Synthesis (VaR & CVaR)**: Calculates both Value-at-Risk and Expected Shortfall (Conditional VaR) to capture extreme "black swan" tail risks.
+- **Actionable Alpha (Kelly Sizing)**: Automatically computes the optimal fractional position size using the Continuous Kelly Criterion.
 - **Empirical Backtesting**: Validates model reliability on every run by testing against the most recent 10 days of "hidden" data.
 
 ---
@@ -24,8 +25,8 @@ The suite operates on a multi-stage execution pipeline:
 1.  **Ingestion Layer**: Real-time retrieval of OHLCV data via `yfinance` for both primary assets and macro-covariates.
 2.  **Quant Signal Processing**: Calculation of log-returns followed by a 20-day Exponentially Weighted Moving Average (EWMA) for "ghost-free" volatility.
 3.  **Recursive Forecast Stage (A)**: All macro signals are fed into TimesFM to project their most likely paths over the requested horizon.
-4.  **Conditioned Forecast Stage (B)**: The primary asset's volatility is forecasted using the *projected paths* from Stage A as dynamic external covariates (XReg).
-5.  **Risk Synthesis**: The 90th percentile forecast is extracted and processed through the VaR and Z-Score engines to generate a final system status.
+4.  **Conditioned Forecast Stage (B)**: The primary asset's volatility and expected returns are forecasted using the *projected paths* from Stage A as dynamic external covariates (XReg).
+5.  **Risk & Alpha Synthesis**: Data is processed through the VaR, CVaR, and Kelly engines to generate actionable allocation advice.
 
 ---
 
@@ -87,10 +88,19 @@ The suite translates the 90th percentile forecast into a dollar-value exposure:
 $$\text{VaR} = \text{Portfolio Value} \times \text{Projected Volatility} \times Z_{\text{confidence}}$$
 For a 95% confidence level, the engine uses a Z-multiplier of **1.645**.
 
-### Adaptive Z-Score
-Risk is evaluated relative to the last 90 periods:
-$$\text{Z-Score} = \frac{\text{Projected Vol} - \mu_{90}}{\sigma_{90}}$$
-"DANGER" is triggered only if the Z-Score > 2.0 **and** absolute volatility exceeds the user's threshold.
+### Expected Shortfall (CVaR)
+CVaR measures the average loss in the worst $(1-\alpha)$ cases. We use a Gaussian approximation for the tail:
+$$\text{CVaR}_{\alpha} = \text{Portfolio Value} \times \text{Volatility} \times \frac{\phi(\Phi^{-1}(1-\alpha))}{1-\alpha}$$
+This provides a more conservative estimate than VaR by accounting for the magnitude of losses beyond the threshold.
+
+### Continuous Kelly Criterion
+To calculate optimal position sizing ($f^*$), we use the continuous-time Kelly formula:
+$$f^* = \frac{\mu - r}{\sigma^2}$$
+Where:
+- $\mu$: Annualized expected return (from model point forecast).
+- $r$: Risk-free rate (default 4%).
+- $\sigma$: Annualized expected volatility.
+The suite clips this to $[0, 1]$ to prevent shorting or excessive leverage recommendations.
 
 ---
 

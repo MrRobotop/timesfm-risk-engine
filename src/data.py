@@ -4,7 +4,7 @@ import pandas as pd
 import yfinance as yf
 
 class MarketDataFetcher:
-    def fetch_multivariate_data(self, primary_ticker: str, macro_tickers: list[str], days: int, interval: str = "1d", clip_limit: float = None) -> tuple[np.ndarray, dict]:
+    def fetch_multivariate_data(self, primary_ticker: str, macro_tickers: list[str], days: int, interval: str = "1d", clip_limit: float = None) -> tuple[np.ndarray, np.ndarray, dict]:
         # Calculate date range for the last 'days' days
         end_date = datetime.datetime.now()
         start_date = end_date - datetime.timedelta(days=days)
@@ -35,8 +35,9 @@ class MarketDataFetcher:
         # Consolidate back into a unified frame
         df_consolidated = clean_df.copy()
         df_consolidated['primary_volatility'] = primary_vol
+        df_consolidated['primary_returns'] = log_returns
         
-        # Drop the new leading NaNs created by the 20-period rolling window
+        # Drop the new leading NaNs created by the 20-period rolling window and log returns shift
         df_consolidated = df_consolidated.dropna()
         
         if clip_limit is not None:
@@ -51,5 +52,6 @@ class MarketDataFetcher:
             macro_dict_out[ticker] = z_scored.to_numpy()
             
         primary_vol_array = df_consolidated['primary_volatility'].to_numpy()
+        primary_returns_array = df_consolidated['primary_returns'].to_numpy()
         
-        return primary_vol_array, macro_dict_out
+        return primary_vol_array, primary_returns_array, macro_dict_out

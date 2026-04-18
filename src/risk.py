@@ -13,12 +13,37 @@ def calculate_portfolio_var(projected_volatility: float, portfolio_value: float,
     # projected_volatility is the forecasted standard deviation of log returns
     return portfolio_value * projected_volatility * z_score
 
-def assess_multivariate_risk(quantile_forecast: np.ndarray, historical_vol: np.ndarray, risk_threshold: float, z_threshold: float = 2.0, portfolio_value: float = 1000000.0, confidence_level: float = 0.95) -> dict:
+def calculate_cvar(projected_volatility: float, portfolio_value: float, confidence_level: float = 0.95) -> float:
+    """
+    Calculates Gaussian Expected Shortfall (CVaR).
+    Factors for 90%, 95%, 99%: 1.755, 2.063, 2.665
+    """
+    cvar_map = {0.90: 1.755, 0.95: 2.063, 0.99: 2.665}
+    factor = cvar_map.get(confidence_level, 2.063)
+    return portfolio_value * projected_volatility * factor
+
+def calculate_kelly(expected_return_daily: float, expected_volatility_daily: float, risk_free_rate: float = 0.04) -> float:
+    """
+    Calculates the continuous Kelly Criterion optimal fraction.
+    f* = (mu - r) / sigma^2
+    All rates are annualized for calculation.
+    """
+    mu_a = expected_return_daily * 252
+    sigma_a = expected_volatility_daily * np.sqrt(252)
+    
+    if sigma_a < 1e-6:
+        return 0.0
+        
+    kelly_f = (mu_a - risk_free_rate) / (sigma_a**2)
+    return float(np.clip(kelly_f, 0.0, 1.0)) # Limit to no-shorting, max 1x leverage for safety
+
+def assess_multivariate_risk(quantile_forecast: np.ndarray, historical_vol: np.ndarray, risk_threshold: float, z_threshold: float = 2.0, portfolio_value: float = 1000000.0, confidence_level: float = 0.95, expected_return_daily: float = 0.0) -> dict:
     """
     Evaluates risk using a hybrid approach:
     1. Absolute volatility threshold.
     2. Adaptive Z-score relative to the last 90 logged periods.
-    3. Portfolio VaR Exposure.
+    3. Portfolio VaR & CVaR Exposure.
+    4. Actionable Kelly Sizing.
     """
     # 1. Extract the projected maximal volatility (final horizon, highest quantile)
     if quantile_forecast.ndim == 3:
@@ -37,8 +62,12 @@ def assess_multivariate_risk(quantile_forecast: np.ndarray, historical_vol: np.n
     
     # 3. Portfolio Exposure Synthesis
     var_exposure = calculate_portfolio_var(projected_max_volatility, portfolio_value, confidence_level)
+    cvar_exposure = calculate_cvar(projected_max_volatility, portfolio_value, confidence_level)
     
-    # 4. Hybrid Evaluation & Explainability
+    # 4. Actionable Alpha: Kelly Sizing
+    kelly_f = calculate_kelly(expected_return_daily, projected_max_volatility)
+    
+    # 5. Hybrid Evaluation & Explainability
     z_breach = z_score > z_threshold
     abs_breach = projected_max_volatility > risk_threshold
     
@@ -59,8 +88,11 @@ def assess_multivariate_risk(quantile_forecast: np.ndarray, historical_vol: np.n
         "status": status,
         "explanation": explanation,
         "projected_max_volatility": projected_max_volatility,
+        "expected_return_daily": expected_return_daily,
         "z_score": z_score,
         "var_exposure": var_exposure,
+        "cvar_exposure": cvar_exposure,
+        "kelly_fraction": kelly_f,
         "confidence": confidence_level,
         "threshold": risk_threshold,
         "z_threshold": z_threshold

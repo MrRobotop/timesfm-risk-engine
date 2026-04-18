@@ -1,0 +1,20 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# OS junk
+.DS_Store
+
+# Environments
+.venv/
+env/
+venv/
+ENV/
+
+# Project specific
+*.json
+!requirements.txt
+.pytest_cache/
+.vscode/
+graphify-out/
